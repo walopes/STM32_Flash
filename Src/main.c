@@ -64,23 +64,54 @@ static void MX_GPIO_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-
+#define MAPSIZE 4
+#define WRITE_FLASH 1
+#define ERASE_FLASH 0
 
 //uint32_t startAdd = 0x8040000;
 //uint32_t startAdd = 0x080000FF; // Comecando em 32K da Flash
+
+// Inicio da posicao na memoria Flash permitida para a escrita do usuario
 uint32_t startAdd = 0x08008000; // Comecando em 32K da Flash
+
+typedef struct{
+	uint16_t EncoderA_right;
+	uint16_t EncoderB_right;
+	uint16_t EncoderA_left;
+	uint16_t EncoderB_left;
+}Enc;
+
+typedef struct{
+	Enc Mapping[MAPSIZE];
+	uint16_t qtdOfMarcs;
+}Map;
+
+void initMap(Map *E)
+{
+	E->qtdOfMarcs = 0;
+
+	uint16_t x = 0;
+	while(x < MAPSIZE)
+	{
+		E->Mapping[x].EncoderA_right = 0;
+		E->Mapping[x].EncoderA_left = 0;
+		E->Mapping[x].EncoderB_right = 0;
+		E->Mapping[x].EncoderB_left = 0;
+		x++;
+	}
+}
 
 typedef struct{
 	uint16_t Val;
 	uint16_t Tes;
 }Teste;
-
-Teste teste[30];
-
+//
+//Teste teste[30];
+//
 Teste Memoria[30];
 
 
-void writeFlash(void)
+void writeFlash(uint16_t identifier, Map *myMap)
 {
   uint32_t i, j;
 
@@ -111,26 +142,74 @@ void writeFlash(void)
   uint32_t pageError = 0;
   HAL_StatusTypeDef re = HAL_FLASHEx_Erase(&Erase,&pageError);
 
+
+  ////////////////  GRAVACAO NA FLASH
+
+  // Utilizado para preencher todo os espaco na Flash com 0s
+  uint16_t zero = 0;
+
+
+  // Primeiro a ser gravado eh a quantidade de marcacoes
+  if(identifier == WRITE_FLASH) HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd),myMap->qtdOfMarcs);
+  else HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd),zero);
+
   // Write the mapping in the Flash
-  for(i=0;i<30;i++)
+  j=i=1;
+  //for(i=0;i<30;i++)
+  while(i < myMap->qtdOfMarcs)
   {
-		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 2*i*30),teste[i].Val);
+	  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*j),myMap->Mapping[i].EncoderA_right);
+	  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+1)),myMap->Mapping[i].EncoderA_left);
+	  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+2)),myMap->Mapping[i].EncoderB_right);
+	  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+3)),myMap->Mapping[i].EncoderB_left);
+	  j=i+4;
+	  i++;
+		  //HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 2*i*30),teste[i].Val);
 		  //HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(FLASH_BASE+i*sizeof(uint16_t)),teste[i].Val);
   }
+
+  ////////////////////
 
 	// Lock the Flash again.
 	HAL_FLASH_Lock();
 }
 
-void ReadFlash(void)
+//void ReadFlash(void)
+//{
+//	uint32_t i,j;
+//	for(i=0;i<30;i++)
+//	{
+//		//teste[i].Val = *(uint16_t *)(startAdd + 2*i*30);
+//		Memoria[i].Val = *(uint16_t *)(startAdd + 2*i*30);
+//		//teste[i] = (Teste)0x080E0000;
+//	}
+//
+//}
+
+void ReadFromFlash(Map *myMap)
 {
 	uint32_t i,j;
-	for(i=0;i<30;i++)
-	{
-		//teste[i].Val = *(uint16_t *)(startAdd + 2*i*30);
-		Memoria[i].Val = *(uint16_t *)(startAdd + 2*i*30);
-		//teste[i] = (Teste)0x080E0000;
-	}
+
+	// Primeiro e feito a leitura da quantidade de marcacoes
+	myMap->qtdOfMarcs = *(uint16_t *)(startAdd);
+
+	// Leitura das marcacoes
+	  i=0;
+	  //for(i=0;i<30;i++)
+	  while(i < myMap->qtdOfMarcs)
+	  {
+		  myMap->Mapping[i].EncoderA_right = *(uint16_t *)(startAdd + 4*(j+1));
+		  myMap->Mapping[i].EncoderA_left = *(uint16_t *)(startAdd + 4*(j+2));
+		  myMap->Mapping[i].EncoderB_right = *(uint16_t *)(startAdd + 4*(j+3));
+		  myMap->Mapping[i].EncoderB_left = *(uint16_t *)(startAdd + 4*(j+4));
+//
+//		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*j),myMap->Mapping[i].EncoderA_right);
+//		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+1)),myMap->Mapping[i].EncoderA_left);
+//		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+2)),myMap->Mapping[i].EncoderB_right);
+//		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,(startAdd + 4*(j+3)),myMap->Mapping[i].EncoderB_left);
+		  j=i+5;
+		  i++;
+	  }
 
 }
 
@@ -170,20 +249,33 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
-  ReadFlash();
-  if(teste[0].Val == 0)
-  {
-	  int x=0;
-	  while(x<30)
-	  {
-		  teste[x].Val = x*2;
-		  teste[x].Tes = x;
-		  x++;
-	  }
-	  writeFlash();
-  }
-  ReadFlash();
 
+  ////////// NEW
+
+  Map myMap, myMap2;
+  int x;
+
+  myMap.qtdOfMarcs = 4;
+
+  initMap(&myMap);
+  initMap(&myMap2);
+
+
+  myMap.qtdOfMarcs = 4;
+
+ // ReadFlash();
+
+//  for(x=0;x<4;x++)
+//  {
+//	  myMap.Mapping[x].EncoderA_right = 1000+x;
+//	  myMap.Mapping[x].EncoderB_right = 2000+x;
+//	  myMap.Mapping[x].EncoderA_left = 3000+x;
+//	  myMap.Mapping[x].EncoderB_left = 4000+x;
+//  }
+
+ // writeFlash(WRITE_FLASH,&myMap);
+
+  ReadFromFlash(&myMap2);
 
 
   /* USER CODE END 2 */
